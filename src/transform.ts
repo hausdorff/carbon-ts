@@ -155,11 +155,12 @@ export namespace core {
         accessModes: AccessModeTypes[] = ["ReadWriteOnce"],
         labels?: Labels,
       ): k8s.IoK8sApiCoreV1PersistentVolume => {
-        const v = <k8s.IoK8sApiCoreV1PersistentVolume><object>{
+        const v = {
           apiVersion: "v1",
           kind: "PersistentVolume",
           metadata: {
             name: name,
+            labels: labels == null ? {} : labels,
           },
           spec: {
             accessModes: accessModes,
@@ -168,10 +169,6 @@ export namespace core {
             },
           }
         };
-
-        if (labels) {
-          v.metadata.labels = labels;
-        }
 
         return v;
       }
@@ -185,7 +182,8 @@ export namespace core {
         path: string,
       ): Transform<k8s.IoK8sApiCoreV1PersistentVolume> =>
         doTransform(v => {
-          v.spec.hostPath = <k8s.IoK8sApiCoreV1HostPathVolumeSource>{path: path};
+          if (v.spec == null) { v.spec = {} };
+          v.spec.hostPath = {path: path};
         });
 
       export const configureAsAwsElasticBlockStore = (
@@ -195,6 +193,7 @@ export namespace core {
         partition?: number,
       ): Transform<k8s.IoK8sApiCoreV1PersistentVolume> =>
         doTransform(v => {
+          if (v.spec == null) { v.spec = {} };
           v.spec.awsElasticBlockStore = <k8s.IoK8sApiCoreV1AWSElasticBlockStoreVolumeSource>{
             fsType: fsType,
             readOnly: readOnly,
@@ -213,6 +212,7 @@ export namespace core {
         readOnly: boolean = false,
       ): Transform<k8s.IoK8sApiCoreV1PersistentVolume> =>
         doTransform(v => {
+          if (v.spec == null) { v.spec = {} };
           v.spec.gcePersistentDisk = <k8s.IoK8sApiCoreV1GCEPersistentDiskVolumeSource>{
             fsType: fsType,
             readOnly: readOnly,
@@ -236,7 +236,7 @@ export namespace core {
         accessModes: persistentVolume.AccessModeTypes[] = ["ReadWriteOnce"],
         labels: Labels = {app: claimName}
       ): k8s.IoK8sApiCoreV1PersistentVolumeClaim => {
-        return <k8s.IoK8sApiCoreV1PersistentVolumeClaim><object>{
+        return <k8s.IoK8sApiCoreV1PersistentVolumeClaim>{
           apiVersion: "v1",
           kind: "PersistentVolumeClaim",
           metadata: {
@@ -290,7 +290,10 @@ export namespace core {
         t: Transform<k8s.IoK8sApiCoreV1Container>,
         filter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
       ): Transform<k8s.IoK8sApiCoreV1Pod> => {
-        return doTransform(p => util.v1.podSpec.transformContainers(t, filter)(p.spec));
+        return doTransform(p => {
+          if (p.spec == null) { p.spec = {containers: []}; }
+          return util.v1.podSpec.transformContainers(t, filter)(p.spec);
+        });
       }
 
       export const getReadyStatus = (pod: k8s.IoK8sApiCoreV1Pod): k8s.IoK8sApiCoreV1PodCondition => {
@@ -319,10 +322,12 @@ export namespace core {
         subPath?: string,
         mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
       ): Transform<k8s.IoK8sApiCoreV1Pod> =>
-        doTransform(p =>
-          util.v1.podSpec.addVolume(
+        doTransform(p => {
+          if (p.spec == null) { p.spec = {containers: []}; }
+          return util.v1.podSpec.addVolume(
             v, mountPath, readOnly, subPath, mountFilter
-          )(p.spec));
+          )(p.spec)
+        });
 
       export const addMount = (
         volumeName: string,
@@ -331,10 +336,12 @@ export namespace core {
         subPath?: string,
         mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
       ): Transform<k8s.IoK8sApiCoreV1Pod> =>
-        doTransform(p =>
-          util.v1.podSpec.addMount(
+        doTransform(p => {
+          if (p.spec == null) { p.spec = {containers: []}; }
+          return util.v1.podSpec.addMount(
             volumeName, mountPath, readOnly, subPath, mountFilter
-          )(p.spec));
+          )(p.spec)
+        });
 
       export const deploy = (
         replicas = 1,
@@ -342,11 +349,14 @@ export namespace core {
         appLabels?: Labels,
       ): Transform<k8s.IoK8sApiCoreV1Pod, k8s.IoK8sApiAppsV1beta1Deployment> => {
         return p => {
-          if (!deploymentName) {
+          if (deploymentName == null) {
+            if (p.metadata == null || p.metadata.name == null) {
+              throw new Error("Could not create deployment object; `deploymentName` and `.metadata.name` are both blank");
+            }
             deploymentName = p.metadata.name;
           }
 
-          if (!appLabels) {
+          if (appLabels == null) {
             appLabels = {app: deploymentName};
           }
 
@@ -361,7 +371,11 @@ export namespace core {
         mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
       ): Transform<k8s.IoK8sApiCoreV1Pod, k8s.IoK8sApiCoreV1ConfigMap> => {
         return p => {
-          if (!configMapName) {
+          if (p.spec == null) { p.spec = {containers: []}; }
+          if (configMapName == null) {
+            if (p.metadata == null || p.metadata.name == null) {
+              throw new Error("Could not create configMap; `configMapName` and `.metadata.name` are both blank");
+            }
             configMapName = p.metadata.name;
           }
           return util.v1.podSpec.addConfigData(
@@ -380,18 +394,24 @@ export namespace core {
         accessModes: core.v1.persistentVolume.AccessModeTypes[] = ["ReadWriteOnce"],
         mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
       ): Transform<k8s.IoK8sApiCoreV1Pod, k8s.IoK8sApiCoreV1PersistentVolumeClaim> =>
-        p =>
-          util.v1.podSpec.claimPersistentVolume(
+        p => {
+          if (p.spec == null) { p.spec = {containers: []}; }
+          return util.v1.podSpec.claimPersistentVolume(
             pvClaim, mountPath, storageRequest, volumeName, readOnly,subPath,
             accessModes, mountFilter
           )(p.spec);
+        }
 
       export const getLogs = (
         c: client.Client, pod: k8s.IoK8sApiCoreV1Pod,
-      ): query.Observable<{pod: k8s.IoK8sApiCoreV1Pod, logs: string}> =>
-        c.core.v1.Pod
+      ): query.Observable<{pod: k8s.IoK8sApiCoreV1Pod, logs: string}> => {
+        if (pod.metadata == null || pod.metadata.name == null || pod.metadata.namespace == null) {
+          throw new Error("Can't obtain logs of a pod without a name or namespace");
+        }
+        return c.core.v1.Pod
           .logs(pod.metadata.name, pod.metadata.namespace)
-          .map(logs => logs == null ? {pod, logs: ""} : {pod, logs})
+          .map(logs => logs == null ? {pod, logs: ""} : {pod, logs});
+      }
     }
 
     export namespace service {
@@ -399,17 +419,15 @@ export namespace core {
         name: string,
         labels?: Labels,
       ): k8s.IoK8sApiCoreV1Service => {
-        const svc = <k8s.IoK8sApiCoreV1Service>{
-          "kind": "Service",
-          "apiVersion": "v1",
-          "metadata": {
+        const svc = {
+          kind: "Service",
+          apiVersion: "v1",
+          metadata: {
             name: name,
+            labels : labels != null ? labels : {},
           },
-          "spec": {}
+          spec: {}
         };
-        if (labels) {
-          svc.metadata.labels = labels;
-        }
 
         return svc;
       }
@@ -507,6 +525,7 @@ export namespace core {
         let svc = stub(name, labels);
 
         if (externalIps) {
+          if (svc.spec == null) { svc.spec = {}; }
           svc.spec.externalIPs = externalIps;
         }
 
@@ -574,7 +593,10 @@ export namespace core {
        * @returns Transformer that sets labels in the in a service object
        */
       export const setSelector = (labels: Labels): Transform<k8s.IoK8sApiCoreV1Service> => {
-        return doTransform(s => s.spec.selector = labels);
+        return doTransform(s => {
+          if (s.spec == null) { s.spec = {}; }
+          return s.spec.selector = labels;
+        });
       }
 
       /**
@@ -588,7 +610,10 @@ export namespace core {
       export const setPorts = (
         ports: number | k8s.IoK8sApiCoreV1ServicePort | k8s.IoK8sApiCoreV1ServicePort[],
       ): Transform<k8s.IoK8sApiCoreV1Service> => {
-        return doTransform(s => s.spec.ports = util.makeServicePorts(ports));
+        return doTransform(s => {
+          if (s.spec == null) { s.spec = {}; }
+          return s.spec.ports = util.makeServicePorts(ports);
+        });
       }
 
       /**
@@ -604,6 +629,7 @@ export namespace core {
         ports: number | k8s.IoK8sApiCoreV1ServicePort | k8s.IoK8sApiCoreV1ServicePort[],
       ): Transform<k8s.IoK8sApiCoreV1Service> => {
         return doTransform(s => {
+          if (s.spec == null) { s.spec = {}; }
           if (s.spec.ports) {
             s.spec.ports.concat(util.makeServicePorts(ports));
           } else {
@@ -659,6 +685,7 @@ export namespace core {
         externalIps?: string[],
       ): Transform<k8s.IoK8sApiCoreV1Service> => {
         return doTransform(s => {
+          if (s.spec == null) { s.spec = {}; }
           if (s.spec.type !== "LoadBalancer") {
             throw new Error("Can't configure external traffic on service whose type is not `LoadBalancer`");
           }
@@ -678,6 +705,7 @@ export namespace core {
       export const targetsPod = (
         service: k8s.IoK8sApiCoreV1Service, pod: k8s.IoK8sApiCoreV1Pod,
       ): boolean => {
+        if (service.spec == null) { service.spec = {}; }
         const selector = service.spec.selector;
         // Service doesn't target any pods.
         if (selector == null) {
@@ -687,17 +715,20 @@ export namespace core {
         return syncQuery
           .from(service.spec.selector)
           .all(({key, value}) =>
+            pod.metadata != null &&
             pod.metadata.labels != null &&
             pod.metadata.labels[key] == value)
       }
 
       export const listTargetedPods = (
         c: client.Client, service: k8s.IoK8sApiCoreV1Service
-      ): query.Observable<k8s.IoK8sApiCoreV1Pod[]> =>
-        c.core.v1.Pod
+      ): query.Observable<k8s.IoK8sApiCoreV1Pod[]> => {
+        if (service.metadata == null) { service.metadata = {}; }
+        return c.core.v1.Pod
           .list(service.metadata.namespace)
           .filter(pod => targetsPod(service, pod))
           .toArray();
+      }
 
       export interface PodWatchListUpdate {
         readonly currentPodUpdate: client.WatchEvent<k8s.IoK8sApiCoreV1Pod>;
@@ -707,11 +738,16 @@ export namespace core {
       export const watchTargetedPods = (
         c: client.Client, service: k8s.IoK8sApiCoreV1Service
       ): query.Observable<PodWatchListUpdate> => {
+        if (service.metadata == null) { service.metadata = {}; }
         const pods = new Map<string, k8s.IoK8sApiCoreV1Pod>();
         return c.core.v1.Pod
           .watch(service.metadata.namespace)
           .flatMap(currentPodUpdate => {
-            const key = currentPodUpdate.object.metadata.name;
+            const currMeta = currentPodUpdate.object.metadata;
+            if (currMeta == null || currMeta.name == null) {
+              throw new Error();
+            }
+            const key = currMeta.name;
             const targeted = targetsPod(service, currentPodUpdate.object);
             if (!targeted && pods.has(key)) {
               // It was previously targeted, but the labels have changed such
@@ -751,11 +787,19 @@ export namespace core {
       export const watchEndpointsByPod = (
         c: client.Client, service: k8s.IoK8sApiCoreV1Service,
       ): query.Observable<EndpointsWatchListUpdate> => {
+        const svcMeta = service.metadata;
+        if (svcMeta == null || svcMeta.name == null || svcMeta.namespace == null) {
+          throw new Error("Can't watch endpoints of service without name or namespace");
+        }
         const endpointSet = new Map<string, k8s.IoK8sApiCoreV1EndpointPort[]>();
         return c.core.v1.Endpoints
-          .watch(service.metadata.namespace)
-          .filter(({object: endpoints}) =>
-            endpoints.metadata.name == service.metadata.name)
+          .watch(svcMeta.namespace)
+          .filter(({object: endpoints}) => {
+            if (endpoints.metadata == null || endpoints.metadata.name == null) {
+              return false;
+            }
+            return endpoints.metadata.name == svcMeta.name
+          })
           .flatMap(update => {
             const {object: endpoints, type} = update;
             const subsets = endpoints.subsets == null ? [] : endpoints.subsets;
@@ -776,7 +820,10 @@ export namespace core {
                 const addrs = addresses == null ? [] : addresses;
                 return query.Observable
                   .of(...addrs)
-                  .flatMap(address => [{podName: address.targetRef.name, ports}]);
+                  .flatMap(address => {
+                    if (address.targetRef == null || address.targetRef.name == null) return [];
+                    return [{podName: address.targetRef.name, ports}]
+                  });
               })
               // Group by pod name.
               .groupBy(({podName}) => podName)
@@ -788,7 +835,7 @@ export namespace core {
               .flatMap(addressGroup =>
                 addressGroup
                   .reduce((acc: k8s.IoK8sApiCoreV1EndpointPort[], {ports}) =>
-                    acc.concat(ports), [])
+                    acc.concat(ports != null ? ports : []), [])
                   .flatMap(ports => {
                     switch (type) {
                       case "ADDED":
@@ -821,23 +868,15 @@ export namespace core {
         filesToInclude?: k8s.IoK8sApiCoreV1KeyToPath[],
         optional: boolean = false,
       ): k8s.IoK8sApiCoreV1Volume => {
-        const v = <k8s.IoK8sApiCoreV1Volume>{
+        return {
           name: volumeName ? volumeName : `${configMapName}-volume`,
           configMap: {
             name: configMapName,
             defaultMode: defaultPermissions,
+            items: filesToInclude != null ? filesToInclude : [],
+            optional: optional,
           },
         };
-
-        if (filesToInclude) {
-          v.configMap.items = filesToInclude;
-        }
-
-        if (optional) {
-          v.configMap.optional = optional;
-        }
-
-        return v;
       }
 
       // export const makeDownwardApi = (
@@ -857,19 +896,19 @@ export namespace core {
         storageMedium?: "" | "Memory",
         sizeLimit?: string,
       ): k8s.IoK8sApiCoreV1Volume => {
-        const v = <k8s.IoK8sApiCoreV1Volume>{
-          name: volumeName,
-          emptyDir: {},
-        };
+        const source: k8s.IoK8sApiCoreV1EmptyDirVolumeSource = {};
         if (storageMedium) {
-          v.emptyDir.medium = storageMedium;
+          source.medium = storageMedium;
         }
 
         if (sizeLimit) {
-          v.emptyDir.sizeLimit = sizeLimit;
+          source.sizeLimit = sizeLimit;
         }
 
-        return v;
+        return {
+          name: volumeName,
+          emptyDir: source,
+        };
       }
 
       export const makeGitRepo = (
@@ -878,32 +917,31 @@ export namespace core {
         revision: string,
         directory?: string,
       ): k8s.IoK8sApiCoreV1Volume => {
-        const v = <k8s.IoK8sApiCoreV1Volume>{
-          name: volumeName,
-          gitRepo: {
-            repository: repository,
-            revision: revision,
-          },
+        const source: k8s.IoK8sApiCoreV1GitRepoVolumeSource = {
+          repository: repository,
+          revision: revision,
         };
+
         if (directory) {
-          v.gitRepo.directory = directory;
+          source.directory = directory;
         }
 
-        return v;
+        return {
+          name: volumeName,
+          gitRepo: source,
+        };
       }
 
       export const makeHostPath = (
         volumeName: string,
         path: string,
       ): k8s.IoK8sApiCoreV1Volume => {
-        const v = <k8s.IoK8sApiCoreV1Volume>{
+        return {
           name: volumeName,
           hostPath: {
             path: path,
           },
         };
-
-        return v;
       }
 
       export const makePersistentVolumeClaim = (
@@ -911,18 +949,18 @@ export namespace core {
         volumeName?: string,
         readOnly?: boolean
       ): k8s.IoK8sApiCoreV1Volume => {
-        const v = <k8s.IoK8sApiCoreV1Volume>{
-          name: volumeName ? volumeName : `${claimName}-volume`,
-          persistentVolumeClaim: {
-            claimName: claimName,
-          },
-        };
-
-        if (readOnly) {
-          v.persistentVolumeClaim.readOnly = readOnly;
+        const source: k8s.IoK8sApiCoreV1PersistentVolumeClaimVolumeSource = {
+          claimName: claimName,
         }
 
-        return v;
+        if (readOnly) {
+          source.readOnly = readOnly;
+        }
+
+        return {
+          name: volumeName ? volumeName : `${claimName}-volume`,
+          persistentVolumeClaim: source,
+        };
       }
 
       // export const makeProjected = (
@@ -941,23 +979,23 @@ export namespace core {
         keysToInclude?: k8s.IoK8sApiCoreV1KeyToPath[],
         optional: boolean = false,
       ): k8s.IoK8sApiCoreV1Volume => {
-        const v = <k8s.IoK8sApiCoreV1Volume>{
-          name: volumeName ? volumeName : `${secretName}-volume`,
-          secret: {
-            secretName: secretName,
-            defaultMode: defaultPermissions,
-          },
+        const source: k8s.IoK8sApiCoreV1SecretVolumeSource = {
+          secretName: secretName,
+          defaultMode: defaultPermissions,
         };
 
         if (keysToInclude) {
-          v.configMap.items = keysToInclude;
+          source.items = keysToInclude;
         }
 
         if (optional) {
-          v.configMap.optional = optional;
+          source.optional = optional;
         }
 
-        return v;
+        return {
+          name: volumeName ? volumeName : `${secretName}-volume`,
+          secret: source,
+        };
       }
     }
   }
@@ -977,9 +1015,8 @@ export namespace certificates {
           type: "Pending",
           message: "Pending",
           reason: "Pending",
-          lastUpdateTime: {}
         };
-        if (csr.status.conditions == null) {
+        if (csr.status == null || csr.status.conditions == null) {
           return pending;
         }
 
@@ -1012,12 +1049,14 @@ export namespace apps {
         replicas: number = 1,
         revisionHistoryLimit = 10,
       ): k8s.IoK8sApiAppsV1beta1Deployment => {
-        let podSpec: k8s.IoK8sApiCoreV1PodSpec | null = null;
+        let podSpec: k8s.IoK8sApiCoreV1PodSpec | undefined = undefined;
         if ((<any>app)["kind"] === "Pod") {
-          podSpec = (<k8s.IoK8sApiCoreV1Pod><object>app).spec;
+          podSpec = (<k8s.IoK8sApiCoreV1Pod>app).spec;
         } else if (Array.isArray(app)) {
-          podSpec = <k8s.IoK8sApiCoreV1PodSpec>{containers: app};
+          podSpec = {containers: app};
         } else {
+          // NOTE: Need the cast here because TS compiler is not smart enough to
+          // figure out it's sound.
           podSpec = <k8s.IoK8sApiCoreV1PodSpec>{containers: [app]};
         }
 
@@ -1051,6 +1090,7 @@ export namespace apps {
         progressDeadlineSeconds?: number,
       ): Transform<k8s.IoK8sApiAppsV1beta1Deployment> => {
         return doTransform(d => {
+          if (d.spec == null) { d.spec = {template: {}}; }
           if (minReadySeconds) {
             d.spec.minReadySeconds = minReadySeconds;
           }
@@ -1063,6 +1103,7 @@ export namespace apps {
 
       export const setUpdateStrategyRecreate = (): Transform<k8s.IoK8sApiAppsV1beta1Deployment> => {
         return doTransform(d => {
+          if (d.spec == null) { d.spec = {template: {}}; }
           d.spec.strategy = <k8s.IoK8sApiAppsV1beta1DeploymentStrategy>{
             type: "Recreate",
           }
@@ -1074,6 +1115,7 @@ export namespace apps {
         maxUnavailable?: number | string,
       ): Transform<k8s.IoK8sApiAppsV1beta1Deployment> => {
         return doTransform(d => {
+          if (d.spec == null) { d.spec = {template: {}}; }
           d.spec.strategy = <k8s.IoK8sApiAppsV1beta1DeploymentStrategy>{
             type: "RollingUpdate",
             rollingUpdate: {
@@ -1089,8 +1131,11 @@ export namespace apps {
           f: Transform<k8s.IoK8sApiCoreV1Container>,
           filter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
         ): Transform<DeploymentTypes> => {
-          return doTransform(d =>
-            util.v1.podSpec.transformContainers(f, filter)(d.spec.template.spec));
+          return doTransform(d => {
+            if (d.spec == null) { d.spec = {template: {}}; }
+            if (d.spec.template.spec == null) { d.spec.template.spec = {containers: []}; }
+            return util.v1.podSpec.transformContainers(f, filter)(d.spec.template.spec)
+          });
         }
 
         export const addVolume = (
@@ -1100,10 +1145,13 @@ export namespace apps {
           subPath?: string,
           mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
         ): Transform<k8s.IoK8sApiAppsV1beta1Deployment> =>
-          doTransform(p =>
-            util.v1.podSpec.addVolume(
+          doTransform(d => {
+            if (d.spec == null) { d.spec = {template: {}}; }
+            if (d.spec.template.spec == null) { d.spec.template.spec = {containers: []}; }
+            return util.v1.podSpec.addVolume(
               v, mountPath, readOnly, subPath, mountFilter
-            )(p.spec.template.spec));
+            )(d.spec.template.spec)
+          });
 
         export const addMount = (
           volumeName: string,
@@ -1112,10 +1160,13 @@ export namespace apps {
           subPath?: string,
           mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
         ): Transform<k8s.IoK8sApiAppsV1beta1Deployment> =>
-          doTransform(p =>
-            util.v1.podSpec.addMount(
+          doTransform(d => {
+            if (d.spec == null) { d.spec = {template: {}}; }
+            if (d.spec.template.spec == null) { d.spec.template.spec = {containers: []}; }
+            return util.v1.podSpec.addMount(
               volumeName, mountPath, readOnly, subPath, mountFilter
-            )(p.spec.template.spec));
+            )(d.spec.template.spec)
+          });
 
         export const addConfigData = (
           data: { [key: string]: string },
@@ -1124,7 +1175,13 @@ export namespace apps {
           mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
         ): Transform<DeploymentTypes, k8s.IoK8sApiCoreV1ConfigMap> => {
           return d => {
+            if (d.metadata == null) { d.metadata = {}; }
+            if (d.spec == null) { d.spec = {template: {}}; }
+            if (d.spec.template.spec == null) { d.spec.template.spec = {containers: []}; }
             if (!configMapName) {
+              if (d.metadata.name == null) {
+                throw new Error("Can't create configMap when both `configMapName` and `.metadata.name` are undefined");
+              }
               configMapName = d.metadata.name;
             }
             return util.v1.podSpec.addConfigData(
@@ -1143,35 +1200,54 @@ export namespace apps {
           accessModes: core.v1.persistentVolume.AccessModeTypes[] = ["ReadWriteOnce"],
           mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
         ): Transform<k8s.IoK8sApiAppsV1beta1Deployment, k8s.IoK8sApiCoreV1PersistentVolumeClaim> =>
-          p =>
-            util.v1.podSpec.claimPersistentVolume(
+          d => {
+            if (d.spec == null) { d.spec = {template: {}}; }
+            if (d.spec.template.spec == null) { d.spec.template.spec = {containers: []}; }
+            return util.v1.podSpec.claimPersistentVolume(
               pvClaim, mountPath, storageRequest, volumeName, readOnly, subPath,
               accessModes, mountFilter,
-            )(p.spec.template.spec);
+            )(d.spec.template.spec);
+          }
       }
 
       export const setAppLabels = (labels: Labels): Transform<DeploymentTypes> => {
         return doTransform(
-          d => util.v1.metadata.setLabels(labels)(d.metadata),
-          d => d.spec.template.metadata.labels = labels,
-          d => d.spec.selector = <k8s.IoK8sApimachineryPkgApisMetaV1LabelSelector>{matchLabels: labels});
+          d => {
+            if (d.metadata == null) { d.metadata = {}; }
+            return util.v1.metadata.setLabels(labels)(d.metadata)
+          },
+          d => {
+            if (d.spec == null) { d.spec = {template: {}}; }
+            if (d.spec.template.metadata == null) { d.spec.template.metadata = {}; }
+            return d.spec.template.metadata.labels = labels
+          },
+          d => {
+            if (d.spec == null) { d.spec = {template: {}}; }
+            return d.spec.selector = <k8s.IoK8sApimachineryPkgApisMetaV1LabelSelector>{matchLabels: labels};
+          });
       }
 
       //
       // Verbs.
       //
 
-      export const pause = (): Transform<k8s.IoK8sApiAppsV1beta1Deployment> => {
-        return doTransform(d => d.spec.paused = true);
-      }
+      export const pause = (): Transform<k8s.IoK8sApiAppsV1beta1Deployment> =>
+        doTransform(d => {
+          if (d.spec == null) { d.spec = {template: {}}; }
+          return d.spec.paused = true
+        });
 
-      export const unpause = (): Transform<k8s.IoK8sApiAppsV1beta1Deployment> => {
-        return doTransform(d => d.spec.paused = false);
-      }
+      export const unpause = (): Transform<k8s.IoK8sApiAppsV1beta1Deployment> =>
+        doTransform(d => {
+          if (d.spec == null) { d.spec = {template: {}}; }
+          return d.spec.paused = false
+        });
 
-      export const scale = (replicas: number): Transform<k8s.IoK8sApiAppsV1beta1Deployment> => {
-        return doTransform(d => d.spec.replicas = replicas);
-      }
+      export const scale = (replicas: number): Transform<k8s.IoK8sApiAppsV1beta1Deployment> =>
+        doTransform(d => {
+          if (d.spec == null) { d.spec = {template: {}}; }
+          return d.spec.replicas = replicas
+        });
 
       //
       // TODO: autoscale
@@ -1182,8 +1258,22 @@ export namespace apps {
         serviceName?: string
       ): Transform<DeploymentTypes, k8s.IoK8sApiCoreV1Service> => {
         return d => {
+          if (d.spec == null) { d.spec = {template: {}}; }
+          if (
+            !d.spec || !d.spec.template || !d.spec.template.metadata ||
+            !d.spec.template.metadata.labels || !d.metadata
+          ) {
+            throw new Error("Exposing a deployment with a load balancer requires labels on the deployment and its pod template, as well as a name on the deployment or passed as a parameter");
+          }
+          if (serviceName == null) {
+            if (d.metadata.name == null) {
+              throw new Error();
+            }
+            serviceName = d.metadata.name;
+          }
+
           const svc = core.v1.service.makeLoadBalancer(
-            serviceName ? serviceName : d.metadata.name,
+            serviceName,
             util.makeServicePorts(port),
             d.spec.template.metadata.labels,
             d.metadata.labels,
@@ -1198,8 +1288,22 @@ export namespace apps {
         serviceName?: string
       ): Transform<DeploymentTypes, k8s.IoK8sApiCoreV1Service> => {
         return d => {
+          if (d.spec == null) { d.spec = {template: {}}; }
+          if (
+            !d.spec || !d.spec.template || !d.spec.template.metadata ||
+            !d.spec.template.metadata.labels || !d.metadata
+          ) {
+            throw new Error("Exposing a deployment with a load balancer requires labels on the deployment and its pod template, as well as a name on the deployment or passed as a parameter");
+          }
+          if (serviceName == null) {
+            if (d.metadata.name == null) {
+              throw new Error();
+            }
+            serviceName = d.metadata.name;
+          }
+
           const svc = core.v1.service.makeClusterIp(
-            serviceName ? serviceName : d.metadata.name,
+            serviceName,
             util.makeServicePorts(port),
             d.spec.template.metadata.labels,
             d.metadata.labels,
@@ -1214,16 +1318,28 @@ export namespace apps {
       ): query.Observable<k8s.IoK8sApiExtensionsV1beta1ReplicaSet> => {
         return c.extensions.v1beta1.ReplicaSet
           .list("default")
-          .filter(rs =>
-            syncQuery
-              .from(rs.metadata.ownerReferences)
-              .where(oref => oref.name == d.metadata.name)
-              .count() > 0)
+          .filter(rs => {
+            const dmeta = d.metadata;
+            const rsmeta = rs.metadata;
+            if (
+              rsmeta == null || rsmeta.ownerReferences == null ||
+              rsmeta.annotations == null ||
+              rsmeta.annotations["deployment.kubernetes.io/revision"] ||
+              dmeta == null || dmeta.name == null
+            ) {
+              return false;
+            }
+            return syncQuery
+              .from(rsmeta.ownerReferences)
+              .where(oref => oref.name == dmeta.name)
+              .count() > 0;
+          })
           .toArray()
           .flatMap(rss => {
             const arr = syncQuery
               .from(rss)
-              .orderBy(rs => rs.metadata.annotations["deployment.kubernetes.io/revision"])
+              // NOTE: Safe because of the checks above.
+              .orderBy(rs => (<any>rs).metadata.annotations["deployment.kubernetes.io/revision"])
               .toArray();
             return query.Observable.from(arr);
           });
@@ -1240,13 +1356,18 @@ export namespace rbacAuthorization {
       ): boolean =>
         syncQuery
           .from(role.rules)
-          .any(rule =>
-            syncQuery
+          .any(rule => {
+            if (rule.apiGroups == null) rule.apiGroups = [];
+            if (rule.resources == null) rule.resources = [];
+            const anyApiGroupMatch = syncQuery
               .from(rule.apiGroups)
-              .any(currGroup => currGroup == apiGroup) &&
-            syncQuery
+              .any(currGroup => currGroup == apiGroup);
+            const anyResourceMatch = syncQuery
               .from(rule.resources)
-              .any(currRes => currRes == resource));
+              .any(currRes => currRes == resource);
+
+            return anyApiGroupMatch && anyResourceMatch;
+          });
     }
 
     export namespace roleBinding {
@@ -1282,7 +1403,7 @@ namespace util {
     if (Array.isArray(ports)) {
       return ports;
     } else if (isFinite(<number>ports)) {
-      return [<k8s.IoK8sApiCoreV1ServicePort><object>{port: ports, targetPort: ports}];
+      return [<k8s.IoK8sApiCoreV1ServicePort>{port: ports, targetPort: ports}];
     }
     return [<k8s.IoK8sApiCoreV1ServicePort>ports];
   }
@@ -1426,10 +1547,15 @@ namespace util {
         mountFilter: Filter<k8s.IoK8sApiCoreV1Container> = (_: k8s.IoK8sApiCoreV1Container) => true,
       ): Transform<k8s.IoK8sApiCoreV1PodSpec, k8s.IoK8sApiCoreV1PersistentVolumeClaim> => {
         return p => {
-          const pvClaimName =
-            typeof pvClaim === 'string' || pvClaim instanceof String
-            ? <string>pvClaim
-            : pvClaim.metadata.name;
+          let pvClaimName = "";
+          if (typeof pvClaim === 'string' || pvClaim instanceof String) {
+            pvClaimName = <string>pvClaim;
+          } else {
+            if (pvClaim.metadata == null || pvClaim.metadata.name == null) {
+              throw new Error("Can't claim persistent volume without a name");
+            }
+            pvClaimName = pvClaim.metadata.name;
+          }
 
           if (!volumeName) {
             volumeName = `${pvClaimName}-volume`;
